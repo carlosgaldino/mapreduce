@@ -17,9 +17,10 @@ fn main() {
 
 fn map(content: &str) -> Vec<KeyValue> {
     let mut v = Vec::new();
+
     for w in content.split_whitespace() {
         let w: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
-        // println!("{}", w);
+
         if !w.is_empty() {
             v.push(KeyValue { key: w, value: "1".to_string() });
         }
@@ -29,12 +30,7 @@ fn map(content: &str) -> Vec<KeyValue> {
 }
 
 fn reduce(key: &str, values: &Vec<String>) -> String {
-    let mut count = 0;
-
-    for value in values {
-        let v = value.parse::<usize>().unwrap();
-        count += v;
-    }
+    let count = values.iter().fold(0, |acc, v| v.parse::<usize>().unwrap() + acc);
 
     format!("{}", count)
 }

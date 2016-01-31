@@ -7,42 +7,7 @@ use std::collections::BTreeMap;
 struct MapReduce {
     nmap: usize,
     nreduce: usize,
-    file: String,
-}
-
-impl MapReduce {
-    fn merge(&self) {
-        println!("Merge phase");
-
-        let mut hash: BTreeMap<String, String> = BTreeMap::new();
-
-        for i in 0..self.nreduce {
-            let name = merge_filename(&self.file, i);
-            println!("Merge read: {}", name);
-
-            let f = File::open(name).expect("merge");
-
-            let mut reader = BufReader::new(f);
-
-            for line in reader.lines() {
-                let line = line.unwrap();
-                let kv = line.split_whitespace().collect::<Vec<_>>();
-                let k = String::from(kv[0]);
-                let v = String::from(kv[1]);
-
-                hash.insert(k, v);
-            }
-        }
-
-        let f = File::create(format!("mrtmp.{}", self.file)).expect("merge final create:");
-        let mut buf = BufWriter::new(f);
-
-        for (k, v) in hash.iter() {
-            write!(buf, "{} {}\n", k, v).expect("merge marshall");
-        }
-
-        buf.flush().expect("merge flushing");
-    }
+    filename: String,
 }
 
 pub struct KeyValue {
@@ -71,7 +36,7 @@ fn split(filename: &str, mr: &MapReduce) {
     let size = metadata.len() as usize;
     let nchunk = size / mr.nmap;
 
-    let mut outfile = File::create(map_filename(filename, 0)).expect("split outfile");
+    let mut outfile = File::create(map_filename(filename, 0)).expect("split create outfile");
 
     let mut reader = BufReader::new(f);
     let mut buf = String::new();
@@ -89,7 +54,7 @@ fn split(filename: &str, mr: &MapReduce) {
                 break;
             }
 
-            outfile = File::create(map_filename(filename, m)).expect("split outfile");
+            outfile = File::create(map_filename(filename, m)).expect("split create outfile");
             m += 1;
         }
 
@@ -112,7 +77,7 @@ fn do_map<M>(job_number: usize, filename: &str, nreduce: usize, map: &M)
     let metadata = f.metadata().expect("do_map metadata");
     let size = metadata.len() as usize;
 
-    println!("do_map: read split {} {}", name, size);
+    println!("do_map read split {} {}", name, size);
 
     let mut buf = String::new();
 
@@ -121,7 +86,7 @@ fn do_map<M>(job_number: usize, filename: &str, nreduce: usize, map: &M)
     let res = map(&buf);
 
     for r in 0..nreduce {
-        let f = File::create(reduce_filename(filename, job_number, r)).expect("do_map create:");
+        let f = File::create(reduce_filename(filename, job_number, r)).expect("do_map create");
         let mut buf = BufWriter::new(f);
         for kv in &res {
             if hash(&kv.key) % (nreduce as u64) == r as u64 {
@@ -139,11 +104,11 @@ fn do_reduce<R>(job_number: usize, filename: &str, nmap: usize, reduce: &R)
 
     for i in 0..nmap {
         let name = reduce_filename(filename, i, job_number);
-        println!("do_reduce read: {}", name);
+        println!("do_reduce read {}", name);
 
         let f = File::open(name).expect("do_reduce");
 
-        let mut reader = BufReader::new(f);
+        let reader = BufReader::new(f);
 
         for line in reader.lines() {
             let line = line.unwrap();
@@ -154,14 +119,12 @@ fn do_reduce<R>(job_number: usize, filename: &str, nmap: usize, reduce: &R)
             if hash.contains_key(k) {
                 hash.get_mut(k).unwrap().push(String::from(v));
             } else {
-                let mut values = Vec::new();
-                values.push(String::from(v));
-                hash.insert(String::from(k), values);
+                hash.insert(String::from(k), vec![String::from(v)]);
             }
         }
     }
 
-    let f = File::create(merge_filename(filename, job_number)).expect("do_reduce create merge:");
+    let f = File::create(merge_filename(filename, job_number)).expect("do_reduce create merge");
     let mut buf = BufWriter::new(f);
 
     for (k, v) in hash.iter() {
@@ -171,21 +134,54 @@ fn do_reduce<R>(job_number: usize, filename: &str, nmap: usize, reduce: &R)
     buf.flush().expect("do_reduce flushing");
 }
 
-pub fn run_single<M, R>(nmap: usize, nreduce: usize, file: String, map: M, reduce: R)
+fn merge(mr: &MapReduce) {
+    println!("Merge phase");
+
+    let mut hash: BTreeMap<String, String> = BTreeMap::new();
+
+    for i in 0..mr.nreduce {
+        let name = merge_filename(&mr.filename, i);
+        println!("Merge read {}", name);
+
+        let f = File::open(name).expect("merge");
+
+        let reader = BufReader::new(f);
+
+        for line in reader.lines() {
+            let line = line.unwrap();
+            let kv = line.split_whitespace().collect::<Vec<_>>();
+            let k = String::from(kv[0]);
+            let v = String::from(kv[1]);
+
+            hash.insert(k, v);
+        }
+    }
+
+    let f = File::create(format!("mrtmp.{}", mr.filename)).expect("merge final create");
+    let mut buf = BufWriter::new(f);
+
+    for (k, v) in hash.iter() {
+        write!(buf, "{} {}\n", k, v).expect("merge marshall");
+    }
+
+    buf.flush().expect("merge flushing");
+}
+
+pub fn run_single<M, R>(nmap: usize, nreduce: usize, filename: String, map: M, reduce: R)
     where M: Fn(&str) -> Vec<KeyValue>,
           R: Fn(&str, &Vec<String>) -> String {
 
-    let mr = MapReduce { nmap: nmap, nreduce: nreduce, file: file.clone() };
+    let mr = MapReduce { nmap: nmap, nreduce: nreduce, filename: filename.clone() };
 
-    split(&file, &mr);
+    split(&filename, &mr);
 
     for i in 0..nmap {
-        do_map(i, &mr.file, mr.nreduce, &map);
+        do_map(i, &mr.filename, mr.nreduce, &map);
     }
 
     for i in 0..nreduce {
-        do_reduce(i, &mr.file, mr.nmap, &reduce);
+        do_reduce(i, &mr.filename, mr.nmap, &reduce);
     }
 
-    mr.merge();
+    merge(&mr);
 }
