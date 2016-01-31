@@ -1,7 +1,7 @@
 use std::fs::File;
-use std::io::{ BufReader, BufWriter };
+use std::io::{BufReader, BufWriter};
 use std::io::prelude::*;
-use std::hash::{ Hash, SipHasher, Hasher };
+use std::hash::{Hash, Hasher, SipHasher};
 use std::collections::BTreeMap;
 
 struct MapReduce {
@@ -69,7 +69,8 @@ fn hash<T: Hash>(t: &T) -> u64 {
 }
 
 fn do_map<M>(job_number: usize, filename: &str, nreduce: usize, map: &M)
-    where M: Fn(&str) -> Vec<KeyValue> {
+    where M: Fn(&str) -> Vec<KeyValue>
+{
 
     let name = map_filename(filename, job_number);
     let mut f = File::open(&name).expect("do_map");
@@ -98,7 +99,8 @@ fn do_map<M>(job_number: usize, filename: &str, nreduce: usize, map: &M)
 }
 
 fn do_reduce<R>(job_number: usize, filename: &str, nmap: usize, reduce: &R)
-    where R: Fn(&str, &Vec<String>) -> String {
+    where R: Fn(&str, &Vec<String>) -> String
+{
 
     let mut hash: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
@@ -169,9 +171,14 @@ fn merge(mr: &MapReduce) {
 
 pub fn run_single<M, R>(nmap: usize, nreduce: usize, filename: String, map: M, reduce: R)
     where M: Fn(&str) -> Vec<KeyValue>,
-          R: Fn(&str, &Vec<String>) -> String {
+          R: Fn(&str, &Vec<String>) -> String
+{
 
-    let mr = MapReduce { nmap: nmap, nreduce: nreduce, filename: filename.clone() };
+    let mr = MapReduce {
+        nmap: nmap,
+        nreduce: nreduce,
+        filename: filename.clone(),
+    };
 
     split(&filename, &mr);
 

@@ -22,7 +22,10 @@ fn map(content: &str) -> Vec<KeyValue> {
         let w: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
 
         if !w.is_empty() {
-            v.push(KeyValue { key: w, value: "1".to_string() });
+            v.push(KeyValue {
+                key: w,
+                value: "1".to_string(),
+            });
         }
     }
 
