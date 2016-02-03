@@ -3,11 +3,13 @@ use std::io::{BufReader, BufWriter};
 use std::io::prelude::*;
 use std::hash::{Hash, Hasher, SipHasher};
 use std::collections::BTreeMap;
+use crossbeam;
 
-struct MapReduce {
+#[derive(Copy, Clone)]
+struct MapReduce<'a> {
     nmap: usize,
     nreduce: usize,
-    filename: String,
+    filename: &'a str,
 }
 
 pub struct KeyValue {
@@ -177,18 +179,50 @@ pub fn run_single<M, R>(nmap: usize, nreduce: usize, filename: String, map: M, r
     let mr = MapReduce {
         nmap: nmap,
         nreduce: nreduce,
-        filename: filename.clone(),
+        filename: &filename,
     };
 
     split(&filename, &mr);
 
     for i in 0..nmap {
-        do_map(i, &mr.filename, mr.nreduce, &map);
+        do_map(i, mr.filename, mr.nreduce, &map);
     }
 
     for i in 0..nreduce {
-        do_reduce(i, &mr.filename, mr.nmap, &reduce);
+        do_reduce(i, mr.filename, mr.nmap, &reduce);
     }
+
+    merge(&mr);
+}
+
+pub fn run_threaded<M, R>(nmap: usize, nreduce: usize, filename: String, map: M, reduce: R)
+    where M: Send + Copy + Fn(&str) -> Vec<KeyValue>,
+          R: Send + Copy + Fn(&str, &Vec<String>) -> String
+{
+
+    let mr = MapReduce {
+        nmap: nmap,
+        nreduce: nreduce,
+        filename: &filename,
+    };
+
+    split(&filename, &mr);
+
+    crossbeam::scope(|scope| {
+        for i in 0..nmap {
+            scope.spawn(move || {
+                do_map(i, mr.filename, mr.nreduce, &map);
+            });
+        }
+    });
+
+    crossbeam::scope(|scope| {
+        for i in 0..nreduce {
+            scope.spawn(move || {
+                do_reduce(i, mr.filename, mr.nmap, &reduce);
+            });
+        }
+    });
 
     merge(&mr);
 }

@@ -11,7 +11,7 @@ fn main() {
     } else if last.unwrap() == "sequential" {
         mreduce::run_single(5, 3, args.nth(1).unwrap(), map, reduce);
     } else {
-        println!("not implemented yet.");
+        mreduce::run_threaded(10, 7, args.nth(1).unwrap(), map, reduce);
     }
 }
 
